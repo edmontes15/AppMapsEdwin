@@ -1,14 +1,25 @@
 package com.example.appmapsedwin
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
+import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.example.appmapsedwin.mvvm.repository.ApiService
+import com.example.appmapsedwin.mvvm.model.LocationData
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -18,6 +29,9 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLocationButtonClickListener, GoogleMap.OnMyLocationClickListener,
     LocationListener {
@@ -34,6 +48,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         createMapFragment()
+        setupNotificationChannel()
+
+        //sendNotification()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
     }
 
@@ -158,4 +175,65 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
 
     override fun onLocationChanged(location: Location) {
     }
+
+    fun setupNotificationChannel() {
+        val channelID = "chat"
+        val channelName = "chat"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val importance = NotificationManager.IMPORTANCE_HIGH
+            val channel = NotificationChannel(channelID, channelName, importance)
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun sendLocationNotification() {
+        val channelID = "chat"
+
+        val notification = NotificationCompat.Builder(this, channelID).apply {
+            setContentTitle("Ubicación")
+            setContentText("Latitud: $currentLatitude, Longitud: $currentLongitude")
+            setSmallIcon(R.drawable.ic_moto)
+        }.build()
+        print("Jalando padre")
+        val notificationManager = NotificationManagerCompat.from(applicationContext)
+        notificationManager.notify(1, notification)
+        GlobalScope.launch(Dispatchers.IO) {
+            val response = ApiService.locationApi.sendLocation(LocationData(currentLatitude, currentLongitude))
+            if (response.isSuccessful) {
+                Log.d("Si agarro", "Si agarro")
+            // La solicitud se realizó correctamente
+            val responseBody = response.body()
+            // Puedes usar 'responseBody' para obtener más información de la respuesta
+        } else {
+            // Hubo un error en la solicitud
+                Log.d("No agarro", "No agarro")
+            val errorBody = response.errorBody()?.string()
+            // 'errorBody' contiene el cuerpo de la respuesta de error del servidor
+        }
+        }
+    }
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val locationNotificationRunnable = object : Runnable {
+        override fun run() {
+            sendLocationNotification()
+            handler.postDelayed(this, 5000) // 5 segundos
+            print("Jalando padre")
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        handler.post(locationNotificationRunnable)
+
+    }
+
+    override fun onStop() {
+        super.onStop()
+        handler.removeCallbacks(locationNotificationRunnable)
+        //stopLocationUpdates()
+    }
+
 }
